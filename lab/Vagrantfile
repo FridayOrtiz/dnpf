@@ -1,0 +1,67 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.define "dns-server" do |dnsserver|
+    dnsserver.vm.box = "bento/ubuntu-20.04"
+    dnsserver.vm.network "private_network",ip:"192.168.75.5",bridge:"eth1",netmask:"255.255.255.0"
+    dnsserver.vm.hostname = "dns-server"
+    dnsserver.vm.define "dns-server"
+    dnsserver.vm.synced_folder "../", "/home/vagrant/dnpf"
+    dnsserver.vm.provision :shell, path: "server-bootstrap.sh"
+    dnsserver.vm.provision "shell",
+      run: "always",
+      inline: "ip route add 192.168.50.0/24 via 192.168.75.2 dev eth1 onlink metric 10"
+    dnsserver.vm.provider "virtualbox" do |vb|
+      vb.memory = "4096"
+      vb.cpus = "4"
+    end
+  end
+  config.vm.define "dns-client" do |dnsclient|
+    dnsclient.vm.box = "bento/ubuntu-20.04"
+    dnsclient.vm.network "private_network",ip:"192.168.50.5",bridge:"eth1",netmask:"255.255.255.0"
+    dnsclient.vm.hostname = "dns-client"
+    dnsclient.vm.define "dns-client"
+    dnsclient.vm.synced_folder "../", "/home/vagrant/dnpf"
+    dnsclient.vm.provision :shell, path: "client-bootstrap.sh"
+    dnsclient.vm.provision "shell",
+      run: "always",
+      inline: "ip route add 192.168.75.0/24 via 192.168.50.2 metric 10"
+    dnsclient.vm.provider "virtualbox" do |vb|
+      vb.memory = "4096"
+      vb.cpus = "4"
+    end
+  end
+  config.vm.define "client-router" do |clientrouter|
+    clientrouter.vm.box = "bento/ubuntu-20.04"
+    clientrouter.vm.network "private_network",ip:"192.168.50.2",bridge:"eth1",netmask:"255.255.255.0"
+    clientrouter.vm.network "private_network",ip:"192.168.25.10",bridge:"eth2",netmask:"255.255.255.0"
+    clientrouter.vm.hostname = "client-router"
+    clientrouter.vm.define "client-router"
+    clientrouter.vm.synced_folder "../", "/home/vagrant/dnpf"
+    clientrouter.vm.provision :shell, path: "client-router-bootstrap.sh"
+    clientrouter.vm.provision "shell",
+      run: "always",
+      inline: "ip route add 192.168.75.0/24 via 192.168.25.15 metric 10"
+    clientrouter.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+      vb.cpus = "2"
+    end
+  end
+  config.vm.define "server-router" do |serverrouter|
+    serverrouter.vm.box = "bento/ubuntu-20.04"
+    serverrouter.vm.network "private_network",ip:"192.168.75.2",bridge:"eth1",netmask:"255.255.255.0"
+    serverrouter.vm.network "private_network",ip:"192.168.25.15",bridge:"eth2",netmask:"255.255.255.0"
+    serverrouter.vm.hostname = "server-router"
+    serverrouter.vm.define "server-router"
+    serverrouter.vm.synced_folder "../", "/home/vagrant/dnpf"
+    serverrouter.vm.provision :shell, path: "server-router-bootstrap.sh"
+    serverrouter.vm.provision "shell",
+      run: "always",
+      inline: "ip route add 192.168.50.0/24 via 192.168.25.10 metric 10"
+    serverrouter.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+      vb.cpus = "2"
+    end
+  end
+end
