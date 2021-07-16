@@ -14,6 +14,7 @@ use slog_term::TermDecorator;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::error::Error;
+use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 
@@ -84,12 +85,12 @@ fn load_filter(interface_name: &str) -> Result<(), Box<dyn Error>> {
         warn!(LOGGER, "Interface already configured: {:?}", e);
     }
 
-    let prog: &mut SchedClassifier = bpf.program_mut("dns_filter")?.try_into()?;
+    let prog: &mut SchedClassifier = bpf.program_mut("dns_apply_message")?.try_into()?;
     prog.load()?;
     let mut linkref = prog.attach(interface_name, TcAttachType::Egress)?;
     debug!(LOGGER, "DNS filter loaded and attached.");
 
-    let mut perf_array = PerfEventArray::try_from(bpf.map_mut("ntp_filter_events")?)?;
+    let mut perf_array = PerfEventArray::try_from(bpf.map_mut("dns_filter_events")?)?;
 
     let mut perf_buffers = Vec::new();
     for cpuid in online_cpus()? {
@@ -148,10 +149,25 @@ fn run_client(interface: &str) {
             None => continue,
         };
 
-        if udp_packet.get_source() == 123 {
+        if udp_packet.get_destination() == 53 {
             let payload = &packet[(ETHERNET_HEADER_LEN + IPV4_HEADER_LEN + UDP_HEADER_LEN)..];
-            println!("value: {:02x?}", payload);
+            let mut msg = String::new();
+            for b in payload[13..].iter() {
+                match char::from_u32(*b as u32) {
+                    Some(ch) => {
+                        if ch >= 8 as char {
+                            msg.push(ch);
+                        } else {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+            let msg = String::from_utf8(base64::decode(msg).unwrap()).unwrap();
+            print!("{}", msg.trim_end_matches('\n'));
         }
+        std::io::stdout().flush().unwrap();
     }
 }
 
